@@ -1,0 +1,76 @@
+{% extends 'quiz/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">
+                Recent Quizzes
+            </h1>
+            <a href="{% url 'home' %}" 
+               class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300 transform hover:scale-105">
+                Create New Quiz
+            </a>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for quiz in quizzes %}
+            <div class="glass-card p-6 rounded-xl transform transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-xl font-semibold text-purple-300">{{ quiz.topic }}</h2>
+                    <span class="text-sm text-gray-400">{{ quiz.created_at|date:"M d, Y" }}</span>
+                </div>
+                
+                <div class="space-y-2 mb-4">
+                    <div class="flex items-center text-sm text-gray-300">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Time Limit: {{ quiz.time_limit }} minutes
+                    </div>
+                    <div class="flex items-center text-sm text-gray-300">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        Questions: {{ quiz.num_questions }}
+                    </div>
+                </div>
+
+                <div class="flex space-x-3">
+                    <a href="{% url 'take_quiz' quiz.id %}" 
+                       class="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg text-center hover:from-blue-600 hover:to-purple-600 transition-all duration-300">
+                        Take Quiz
+                    </a>
+                    <form method="post" action="{% url 'delete_quiz' quiz.id %}" class="flex-1">
+                        {% csrf_token %}
+                        <button type="submit" 
+                                class="w-full px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-300"
+                                onclick="return confirm('Are you sure you want to delete this quiz?')">
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-span-full text-center py-12">
+                <p class="text-xl text-gray-400">No quizzes available yet. Create your first quiz!</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+.glass-card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-card:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+</style>
+{% endblock %} 

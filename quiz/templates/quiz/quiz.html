@@ -1,0 +1,306 @@
+{% extends 'quiz/base.html' %}
+
+{% block title %}{{ quiz.topic }} - Quiz{% endblock %}
+
+{% block extra_head %}
+<style>
+    .timer {
+        font-family: 'Orbitron', monospace;
+        font-size: 2rem;
+        color: #00eaff;
+        text-shadow: 0 0 8px #00eaff, 0 0 32px #0077ff;
+    }
+    .option-label {
+        cursor: pointer;
+        transition: all 0.2s;
+        background: rgba(16, 34, 68, 0.7);
+        border: 2px solid #00eaff;
+        color: #b3cfff;
+        font-size: 1.1rem;
+        font-family: 'Roboto', Arial, sans-serif;
+    }
+    .option-label:hover {
+        background-color: #0a1a2f;
+        border-color: #00eaff;
+        color: #fff;
+    }
+    input[type="radio"]:checked + .option-label {
+        background-color: #00eaff33;
+        border-color: #00eaff;
+        color: #00eaff;
+        box-shadow: 0 0 8px #00eaff99;
+    }
+    .feedback {
+        font-size: 1.1rem;
+        margin-top: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div id="quiz-main-container" class="futuristic-card bg-white shadow-lg" style="background:#fff;">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold" style="color:#00eaff;">{{ quiz.topic }}</h1>
+            <div class="timer" id="timer">{{ quiz.time_limit }}:00</div>
+        </div>
+
+        <div class="mb-6">
+            <div class="h-2 bg-gray-200 rounded-full">
+                <div id="progress-bar" class="h-2" style="background:#00eaff; width: 0%"></div>
+            </div>
+            <div class="text-sm" style="color:#b3cfff; margin-top:0.5rem;">
+                Question <span id="current-question">1</span> of {{ questions|length }}
+            </div>
+        </div>
+
+        <form id="quiz-form" method="post" autocomplete="off">
+            {% csrf_token %}
+            <input type="hidden" name="time_taken" id="time-taken" value="0">
+            
+            {% for question in questions %}
+            <div class="question-container {% if not forloop.first %}hidden{% endif %}" data-question="{{ forloop.counter }}" data-correct="{{ question.correct_answer }}" data-explanation="{{ question.explanation|escapejs }}">
+                <h2 class="text-xl font-semibold mb-4">{{ question.question_text }}</h2>
+                <div class="space-y-3">
+                    {% for i in "1234" %}
+                    <div class="relative" style="background:#fff;">
+                        <input type="radio" name="q{{ question.id }}" id="q{{ question.id }}_{{ i }}" value="{{ i }}"
+                            class="absolute opacity-0 w-full h-full cursor-pointer answer-radio">
+                        <label for="q{{ question.id }}_{{ i }}"
+                            class="option-label block border rounded-lg answer-label"
+                            style="background:#fff; border:2px solid #111; color:#111; padding: 1rem 1.2rem; margin-bottom: 0.5rem; box-shadow: 0 2px 8px 0 rgba(0,0,0,0.04); cursor:pointer; transition: box-shadow 0.15s, border-color 0.15s;">
+                            {% if i == "1" %}{{ question.option1 }}
+                            {% elif i == "2" %}{{ question.option2 }}
+                            {% elif i == "3" %}{{ question.option3 }}
+                            {% else %}{{ question.option4 }}{% endif %}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="feedback mt-4 hidden"></div>
+            </div>
+            {% endfor %}
+
+            <div class="flex justify-between mt-8">
+                <button type="button" id="prev-btn"
+                    class="futuristic-btn btn-purple"
+                    disabled>
+                    Previous
+                </button>
+                <button type="button" id="next-btn"
+                    class="futuristic-btn btn-teal">
+                    Next
+                </button>
+                <button type="submit" id="submit-btn"
+                    class="futuristic-btn btn-gold hidden">
+                    Submit Quiz
+                </button>
+            </div>
+        </form>
+    </div>
+    <div id="quiz-summary" class="hidden mt-12 p-8 bg-white rounded-lg border text-center" style="background:#fff;">
+        <h2 class="text-2xl font-bold mb-4 text-indigo-700">Quiz Summary</h2>
+        <div class="text-4xl font-bold mb-2" id="summary-score" style="color:#111;"></div>
+        <div class="mb-2 text-lg" id="summary-detail" style="color:#111;"></div>
+        <div id="summary-questions" class="mt-8 text-left" style="max-width:700px;margin:0 auto;"></div>
+        <button onclick="window.location.href='/'" class="futuristic-btn btn-orange">Try Another Quiz</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const questions = document.querySelectorAll('.question-container');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
+        const progressBar = document.getElementById('progress-bar');
+        const currentQuestionSpan = document.getElementById('current-question');
+        let currentQuestion = 1;
+        const totalQuestions = {{ questions|length }};
+        let userAnswers = Array(totalQuestions).fill(null);
+
+        // Timer setup
+        const timerDisplay = document.getElementById('timer');
+        const timeTakenInput = document.getElementById('time-taken');
+        let timeLeft = {{ quiz.time_limit }} * 60; // Convert minutes to seconds
+        let startTime = Date.now();
+
+        function updateTimer() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                showQuizSummary(true); // true = time's up
+            }
+            timeLeft--;
+        }
+
+        const timerInterval = setInterval(updateTimer, 1000);
+
+        function showQuizSummary(timesUp = false) {
+            const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+            timeTakenInput.value = timeTaken;
+            let correct = 0;
+            let wrong = 0;
+            let answered = 0;
+            let summaryHtml = '';
+            questions.forEach((q, idx) => {
+                const correctAns = q.getAttribute('data-correct');
+                const radios = q.querySelectorAll('.answer-radio');
+                const labels = q.querySelectorAll('.answer-label');
+                let userAns = null;
+                radios.forEach((r, i) => {
+                    if (r.checked) userAns = r.value;
+                });
+                userAnswers[idx] = userAns;
+                if (userAns) answered++;
+                let isCorrect = userAns === correctAns;
+                if (isCorrect) correct++; else wrong++;
+                // Build summary for this question
+                summaryHtml += `<div style='margin-bottom:1.5rem;padding:1rem 1.2rem;border-radius:10px;background:#fff;border:2px solid #111;'>`;
+                summaryHtml += `<div style='font-weight:bold;color:#111;'>Q${idx+1}: ${q.querySelector('h2').textContent}</div>`;
+                summaryHtml += `<div style='margin-top:0.5rem;'>`;
+                radios.forEach((r, i) => {
+                    let optText = labels[i].textContent.trim();
+                    let style = 'color:#111;';
+                    let icon = '';
+                    if (r.value === userAns && r.value === correctAns) {
+                        style = 'color:#00ff99;font-weight:bold;';
+                        icon = '✓ Your Correct Answer';
+                    } else if (r.value === userAns && r.value !== correctAns) {
+                        style = 'color:#ff4d6d;font-weight:bold;';
+                        icon = '✗ Your Answer';
+                    } else if (r.value === correctAns) {
+                        style = 'color:#00eaff;font-weight:bold;';
+                        icon = '✓ Correct Answer';
+                    }
+                    summaryHtml += `<div style='margin-bottom:2px;${style}'>${optText} ${icon ? `<span style='margin-left:8px;'>${icon}</span>` : ''}</div>`;
+                });
+                summaryHtml += `</div>`;
+                if (q.getAttribute('data-explanation')) {
+                    summaryHtml += `<div style='margin-top:0.7rem;font-size:1rem;color:#222;'><b>Explanation:</b> ${q.getAttribute('data-explanation')}</div>`;
+                }
+                summaryHtml += `</div>`;
+            });
+            const percent = Math.round((correct / totalQuestions) * 100);
+            document.getElementById('summary-score').textContent = `${percent}%`;
+            if (timesUp) {
+                document.getElementById('summary-detail').textContent =
+                    `Time's up! You answered ${answered} out of ${totalQuestions} questions. ${correct} correct, ${wrong} wrong.`;
+            } else {
+                document.getElementById('summary-detail').textContent =
+                    `You answered ${correct} out of ${totalQuestions} questions correctly. (${wrong} wrong)`;
+            }
+            document.getElementById('summary-questions').innerHTML = summaryHtml;
+            document.getElementById('quiz-summary').classList.remove('hidden');
+            const quizMain = document.getElementById('quiz-main-container');
+            if (quizMain) quizMain.style.display = 'none';
+        }
+
+        document.getElementById('quiz-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            showQuizSummary(false);
+        });
+
+        function showQuestion(questionNumber) {
+            questions.forEach((q, index) => {
+                if (index + 1 === questionNumber) {
+                    q.classList.remove('hidden');
+                } else {
+                    q.classList.add('hidden');
+                }
+            });
+
+            prevBtn.disabled = questionNumber === 1;
+            if (questionNumber === totalQuestions) {
+                nextBtn.classList.add('hidden');
+                submitBtn.classList.remove('hidden');
+            } else {
+                nextBtn.classList.remove('hidden');
+                submitBtn.classList.add('hidden');
+            }
+
+            currentQuestionSpan.textContent = questionNumber;
+            progressBar.style.width = `${((questionNumber - 1) / totalQuestions) * 100}%`;
+        }
+
+        prevBtn.addEventListener('click', () => {
+            if (currentQuestion > 1) {
+                currentQuestion--;
+                showQuestion(currentQuestion);
+            }
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (currentQuestion < totalQuestions) {
+                currentQuestion++;
+                showQuestion(currentQuestion);
+            }
+        });
+
+        // Immediate feedback logic
+        questions.forEach((q, idx) => {
+            const radios = q.querySelectorAll('.answer-radio');
+            const labels = q.querySelectorAll('.answer-label');
+            const feedback = q.querySelector('.feedback');
+            const correct = q.getAttribute('data-correct');
+            const explanation = q.getAttribute('data-explanation');
+            let answered = false;
+            radios.forEach((radio, i) => {
+                radio.addEventListener('change', function() {
+                    if (answered) return;
+                    answered = true;
+                    // Disable all radios
+                    radios.forEach(r => r.disabled = true);
+                    // Remove all highlights
+                    labels.forEach(l => {
+                        l.classList.remove('bg-green-100', 'border-green-200', 'bg-red-100', 'border-red-200');
+                    });
+                    // Highlight selected
+                    if (radio.value === correct) {
+                        labels[i].classList.add('bg-green-100', 'border-green-200');
+                        feedback.innerHTML = `<span class='text-green-700 font-semibold'>Correct!</span><br><span class='text-gray-700'>${explanation}</span>`;
+                    } else {
+                        labels[i].classList.add('bg-red-100', 'border-red-200');
+                        labels[parseInt(correct)-1].classList.add('bg-green-100', 'border-green-200');
+                        feedback.innerHTML = `<span class='text-red-700 font-semibold'>Incorrect!</span><br><span class='text-green-700'>Correct answer: ${labels[parseInt(correct)-1].textContent.trim()}</span><br><span class='text-gray-700'>${explanation}</span>`;
+                    }
+                    feedback.classList.remove('hidden');
+                    // Enable next/submit button
+                    if (idx + 1 === currentQuestion && currentQuestion < totalQuestions) {
+                        nextBtn.disabled = false;
+                    }
+                    if (idx + 1 === currentQuestion && currentQuestion === totalQuestions) {
+                        submitBtn.disabled = false;
+                    }
+                });
+            });
+        });
+
+        // Only allow next/submit after answering
+        nextBtn.disabled = true;
+        submitBtn.disabled = true;
+        showQuestion(1);
+
+        // Enable next/submit only after answering
+        function updateNavButtons() {
+            const q = questions[currentQuestion - 1];
+            const radios = q.querySelectorAll('.answer-radio');
+            let answered = false;
+            radios.forEach(r => { if (r.checked) answered = true; });
+            nextBtn.disabled = !answered;
+            submitBtn.disabled = !answered;
+        }
+        questions.forEach((q, idx) => {
+            const radios = q.querySelectorAll('.answer-radio');
+            radios.forEach(r => {
+                r.addEventListener('change', updateNavButtons);
+            });
+        });
+    });
+</script>
+{% endblock %} 
