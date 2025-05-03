@@ -12,9 +12,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-your-secret-key-here'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('RENDER', '') != 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    'quiz-app-9i4a.onrender.com',  # your actual Render URL
+    '.onrender.com',
+    'localhost',
+    '127.0.0.1'
+]
 
 # Application definition
 INSTALLED_APPS = [
